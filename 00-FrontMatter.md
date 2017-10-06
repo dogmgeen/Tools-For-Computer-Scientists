@@ -15,6 +15,7 @@ header-includes:
 - \usepackage[os=win]{menukeys}
 - \usepackage{newunicodechar}
 - \newunicodechar{↩}{$\color{blue}\scriptstyle\hookleftarrow$}
+- \usepackage{afterpage}
 
 thanks: |
     Thanks to those who put up with our nonsense and those who paid us
