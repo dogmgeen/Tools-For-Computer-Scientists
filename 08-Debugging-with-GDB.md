@@ -45,7 +45,7 @@ Also, you've turned into a raccoon somehow.
 
 You wake up.[^dream]
 
-In real life, you may not be able to slow down or reset time analyze disasters in detail.[^bank-robber]
+In real life, you may not be able to slow down or reset time to analyze disasters in detail.[^bank-robber]
 You can, however, slow down disasters as they happen in your programs.
 
 Using a **debugger**, you can slow down the execution of your programs to help you figure out why it's not working.
