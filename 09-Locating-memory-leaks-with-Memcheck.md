@@ -13,7 +13,9 @@ I guess that's what you get for expecting a machine to appreciate beauty!
 
 A more pragmatic reason for that segmentation fault is that somewhere your program has accessed memory it didn't have permission to access.
 Segmentation faults are but one kind of memory safety bug.
-Other memory bugs tend to be less immediately obvious, but they can introduce hard-to-find bugs.
+You can also unintentionally overwrite other variables in your program,
+or interpret one kind of variable as another (say, treating a class as an int)!
+These sorts of memory bugs can be hard to find, or cause your program to behave unpredictably.
 In this chapter we will explore the different types of memory safety bugs you may encounter as well as tools for detecting and analyzing them.
 
 There is another incentive for ruthlessly excising memory safety bugs: every kind of memory safety bug allows an attacker to use it to exploit
@@ -21,10 +23,10 @@ your program.
 Many of these bugs allow for arbitrary code execution, where the attacker injects their own code into your program to be executed.
 
 The first widespread internet worm, the [Morris worm](https://en.wikipedia.org/wiki/Morris_worm), used a memory safety bug to infect other machines in 1988.
-Unfortunately, even after almost *thirty years*, memory safety bugs are incredibly common in popular software and many viruses still use memory safety bugs.
+Unfortunately, *thirty years* later, memory safety bugs are still incredibly common in popular software and many viruses continue to exploit them.
 For one example, the [WannaCry](https://en.wikipedia.org/wiki/WannaCry_ransomware_attack) and [Petya](https://en.wikipedia.org/wiki/2017_NotPetya_cyberattack)
-viruses use a memory safety exploit called [EternalBlue](https://www.rapid7.com/db/modules/exploit/windows/smb/ms17_010_eternalblue) "allegedly" developed
-by the NSA and released by "Russian" hackers early in 2017.
+viruses use a memory safety exploit called [EternalBlue](https://www.rapid7.com/db/modules/exploit/windows/smb/ms17_010_eternalblue) developed
+by the NSA[^allegedly] and released by Russian[^allegedly2] hackers early in 2017.
 
 ![Smokey Says: "Only You Can Prevent Ransomware"](09/Smokey3.jpg){height=35%}
 
@@ -39,14 +41,14 @@ by the NSA and released by "Russian" hackers early in 2017.
 ### The Stack and The Heap
 
 Your operating system provides two areas where memory can be allocated: the stack and the heap.
-Memory on the stack is managed automatically[^joint], but any allocation only lives as long as the function that makes it.
+Memory on the stack is managed automatically,[^joint] but any allocation only lives as long as the function that makes it.
 When a function is called, a *stack frame* is pushed onto the stack.
-The stack frame holds variables as well as some bookkeeping information.
+The stack frame holds variables declared in that function as well as some bookkeeping information.
 Crucially, this information includes the memory address of the code to return to once the function completes.
 When that function `return`s, its stack frame is popped off the stack and the associated memory is used for the stack frame of the next called function.
 
 Memory allocated on the heap lives as long as you like it to; however, you have to manually allocate and free that memory using `new` and `delete`.[^free]
-While the automatic management of the stack is nice, the freedom of being able to make memory allocations that live longer than the function that created them
+While the automatic management of the stack is nice, the freedom to be able to make memory allocations that live longer than the function that created them
 is essential, especially in large programs.
 
 On modern Intel CPUs, the stack starts at a high memory address and grows downward, while the heap starts at a low memory address and grows upward.
@@ -70,7 +72,8 @@ that you know for sure are there.
 In other words: initialize your dang variables!
 
 Here's an example of uninitialized values, one on the stack and one on the heap:
-```c++
+
+~~~{.cpp .numberLines}
 #include<iostream>
 using namespace std;
 
@@ -94,7 +97,7 @@ int main()
 
   return 0;
 }
-```
+~~~
 
 Your first hint that this isn't right is from the compiler itself if you use the `-Wall` flag:[^linebreak]
 
@@ -112,9 +115,15 @@ Here GCC is smart enough to catch the uninitialized use of our stack-allocated v
 
 Valgrind's Memcheck tool[^memcheck] can detect when your program uses a value uninitialized.
 Memcheck can also track where the uninitialized value is created with the `--track-origins=yes` option.
-If we run the above program (named `uninitialized-values`) through Valgrind (`valgrind --track-origins=yes uninitialized-values`), we get two messages.
+To run the above program (named `uninitialized-value`) through Valgrind, do the following:
 
-The stack-allocated uninitialized value was accessed on line 8 and created on line 5:
+~~~
+$ valgrind --track-origins=yes ./uninitialized-value
+~~~
+
+When we do this, we get messages about both of our variables.
+
+The stack-allocated uninitialized value is accessed on line 8 and created on line 5:
 ```
 ==19296== Conditional jump or move depends on uninitialised value(s)
 ==19296==    at 0x4008FE: main (uninitialized-value.cpp:8)
@@ -156,7 +165,7 @@ Once they have this, they can have the computer start executing whatever code th
 This kind of exploit is known as a buffer overflow exploit.
 
 You can detect these kinds of bugs using either Valgrind or Address Sanitizer (a.k.a. `asan`).
-`asan` is part library, part compiler feature that instruments your code at compile time.
+`asan` is part runtime library, part compiler feature that instruments your code at compile time.
 Then when you run your program, the instrumentation tracks memory information much in the way Valgrind does.
 `asan` is much faster than Valgrind, but requires special compiler flags to work.
 
@@ -169,9 +178,12 @@ export ASAN_OPTIONS=symbolize=1
 ```
 
 Let's look at some examples of this class of bugs and the relevant Valgrind and `asan` output.
+
+#### Out-of-bounds Stack Access
+
 First up, out-of-bounds accesses on a stack-allocated array:
 
-```c++
+```{.cpp .numberLines}
 #include<iostream>
 
 int main()
@@ -189,7 +201,15 @@ This is a mirage. It only works because whatever is one `int` after `array` in `
 This illustrates how important it is to check that you do not have these bugs!
 Even worse, Valgrind does not detect this out-of-bounds access!
 
-However, `asan` does. Its output is somewhat terrifying to see, but the relevant parts look like this:[^edit]
+However, `asan` does.
+Compile the program with this command:
+
+~~~
+$ g++ -g -fsanitize=address -fno-omit-frame-pointer ↩
+    invalid-stack.cpp -o invalid-stack
+~~~
+
+`asan`'s output is somewhat terrifying to see, but the relevant parts look like this:[^edit]
 
 ```
 ==29210==ERROR: AddressSanitizer: stack-buffer-overflow on ↩
@@ -220,10 +240,12 @@ rather than wade through screenfulls of errors trying to figure out which one un
 
 Pretty handy, eh? What more could you ask for!
 
+#### Out-of-bounds Heap Access
+
 Both Valgrind and `asan` can detect heap out-of-bounds accesses.
 Here is a small sample program that demonstrates an out-of-bounds write:
 
-```c++
+```{.cpp .numberLines}
 #include<iostream>
 
 int main()
@@ -274,12 +296,14 @@ The write itself occurred on line 9.
 Furthermore, they show that the write happened 0 bytes to the right[^chickens] (in other words, after the end of) our allocated chunk,
 indicating that we are writing one index past the end of the array.
 
+#### Use After Free
+
 Finally, let's see an example of a use-after-free.
 This type of bug is exploitable by means similar to using an uninitialized value, but it is usually far easier to control
 the contents of memory for a use-after-free bug.[^exploit]
-Like out-of-bounds accesses, this type of bug can go undetected; the below example appears to work, even though it is incorrect!
+Like out-of-bounds accesses, this type of bug can go undetected if you don't check for it; the below example appears to work, even though it is incorrect!
 
-```c++
+```{.cpp .numberLines}
 #include<iostream>
 
 int main()
@@ -336,8 +360,12 @@ previously allocated by thread T0 here:
     #2 0x7f7c327c682f in __libc_start_main
 ```
 
-Both outputs show that a 4-byte (i.e., `int`) read happened 4 bytes (i.e., at index 1) inside our block of 20 bytes
+Both outputs show that a 4-byte (the size of an `int`) read happened 4 bytes (so, at index 1) inside the block of 20 bytes
 that is our array of 5 `int`s.
+
+Invalid read or write bugs can have a number of fixes.
+Sometimes they're as simple as adding a bounds check somewhere to make sure you don't write off the end of an array.
+Other times, you'll have to think carefully about where your code went astray --- see the Debugging chapter for more advice on this.
 
 ### Mismatched and Double Deletes
 
@@ -387,6 +415,7 @@ Both identify where the delete and matching allocation occurred (here, on lines 
 You can tell what the exact mismatch is by looking ath the operators called by the deletion and allocation lines.
 In this example, `operator delete` is called to delete the allocation, but `operator new[]` is called to allocate it.
 
+A double-delete occurs when you delete the same block of memory twice.
 Double deletes may seem innocuous, but they can be easily turned into a use-after-free bug.
 This is because freed memory is usually re-used in future allocations.
 So deleting something, then allocating a second thing, then deleting the first thing again results in
@@ -394,7 +423,7 @@ the second thing being deleted!
 Any future uses of the second thing then become a use-after-free problem, and attempting to properly clean up
 that second allocation brings on a double delete.
 For example,
-```c++
+```{.cpp .numberLines}
 #include<iostream>
 
 int main()
@@ -454,6 +483,8 @@ previously allocated by thread T0 here:
 Both show the location of the allocation and the first delete.
 Typically, this kind of bug arises when you don't properly keep track of whether
 a pointer has been `delete`d yet.
+Sometimes a quick fix for this is to set your pointers to `NULL` after you call `delete`.
+Other times, you'll get a double-delete if you forget to write a copy constructor for a class (or write a buggy one).
 
 ### Memory Leaks
 
@@ -468,7 +499,7 @@ The distinction is drawn because typically indirect memory leaks occur due to no
 
 Both Valgrind and Address Sanitizer can detect memory leaks.
 Let's look at a simple example that has one directly leaked block and one indirectly leaked block:
-```c++
+```{.cpp .numberLines}
 struct List
 {
   int value;
@@ -542,6 +573,10 @@ SUMMARY: AddressSanitizer: 32 byte(s) leaked in 2 allocation(s).
 
 As opposed to Valgrind, Address Sanitizer shows where both directly and indirectly leaked blocks are allocated.
 
+Sometimes memory leaks come from a missing or buggy destructor.
+Other times, they happen when you accidentally overwrite a pointer, say in a buggy `insert()` function.
+These can be more difficult to track down; again, see the Debugging chapter for advice.
+
 \newpage
 ## Questions
 Name: `______________________________`
@@ -582,10 +617,10 @@ export ASAN_OPTIONS=symbolize=1
 - [Paper on Address Sanitizer](https://www.usenix.org/system/files/conference/atc12/atc12-final39.pdf)
 
 [^term]: And the computer it is running on, being that it's the 21st century and all.
-[^joint]: It's a joint effort between how the compiler compiles your code and the operating system.
+[^joint]: It's a joint effort between the compiler and the operating system.
 [^free]: Or if you're writing C, with the `malloc` and `free` functions.
 [^random]: It's not even a good source of random numbers, unless you like random numbers that aren't very random.
-[^always]: It doesn't always do this because statically analyzing software (i.e., at compile time) is Really Hard, but it still catches some stuff.
+[^always]: It doesn't always do this because statically analyzing software (i.e., at compile time) is Really Hard, but it still catches most obvious things.
 [^memcheck]: Valgrind has a whole bunch of tools included, but it runs the Memcheck tool by default.
 We'll see some other Valgrind tools in future chapters of this book.
 [^ptr]: And more generally, any uninitialized value being accessed through a pointer.
@@ -602,3 +637,5 @@ depending on where it is stored, various Bad Things can happen if you try to `de
 There are some technical difficulties with freeing this memory, and since it is in use up until your program exits anyway,
 there is little benefit to going to the effort of freeing it since the operating system deallocates it once your program exits anyway.
 [^llvm]: This requires `llvm` to be installed. Also, depending on the system you are running, you may need to append a version number, e.g., ``export ASAN_SYMBOLIZER_PATH=`which llvm-symbolizer-3.9` ``
+[^allegedly]: Allegedly
+[^allegedly2]: Allegedly
