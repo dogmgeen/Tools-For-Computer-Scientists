@@ -31,10 +31,10 @@ book: cs1001_prelab.pdf
 	@echo -e "\n\nDone! Be sure to print that bad-boy using short-edge duplexing."
 
 cs1001_prelab.pdf: ${MD_PIECES} template.tex
-	pandoc --template=template.tex --from markdown+${EXTENSIONS} --output cs1001_prelab.pdf ${MD_PIECES}
+	pandoc --latex-engine=xelatex --template=template.tex --from markdown+${EXTENSIONS} --output cs1001_prelab.pdf ${MD_PIECES}
 
 cs1001_prelab.tex: ${MD_PIECES} template.tex
 	pandoc --template=template.tex --standalone --from markdown+${EXTENSIONS} --output cs1001_prelab.tex ${MD_PIECES}
 
 %.pdf: 00-FrontMatter.md %*.md
-	pandoc --template=template.tex --from markdown+${EXTENSIONS} --output $@ $^
+	pandoc --latex-engine=xelatex --template=template.tex --from markdown+${EXTENSIONS} --output $@ $^
